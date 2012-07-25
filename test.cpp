@@ -69,6 +69,8 @@ protected:
 struct SpecificApi : public BaseApi
 {
 	virtual void specificMethod() = 0;
+	virtual void specMethVoidRes(int) = 0;
+	virtual int specMethIntRes(double) = 0;
 protected:
 	virtual ~SpecificApi() {}
 };
@@ -109,11 +111,24 @@ namespace LibraryCode
 		virtual void onEnabledChange(bool new_state) 
 		{
 			std::cout << __PRETTY_FUNCTION__ << " new state = " << new_state << std::endl;
+
+			// open channel, whatever
 		}
 
 		virtual void specificMethod() 
 		{
 			std::cout << __PRETTY_FUNCTION__ << std::endl;
+		}
+
+		virtual void specMethVoidRes(int a)
+		{
+			std::cout << __PRETTY_FUNCTION__ << " a = " << a << std::endl;
+		}
+
+		virtual int specMethIntRes(double b)
+		{
+			std::cout << __PRETTY_FUNCTION__ << " b = " << b << std::endl;
+			return (int)b;
 		}
 
 	};
@@ -152,7 +167,15 @@ struct PM
 
 	BaseApi* getProfile()
 	{
-		return profile->getApi();
+		if (profile)
+			return profile->getApi();
+		else
+			return 0;
+	}
+
+	void releaseProfile()
+	{
+		std::cout << __PRETTY_FUNCTION__ << std::endl;
 	}
 
 	void killProfile()
@@ -166,26 +189,64 @@ struct PM
 
 // handler
 
-struct Handler
+#define HANDLER_BOILERPLATE_CALL(API, NAME, RESULT, ...) 		\
+	do { 														\
+		BaseApi* ba = pm.getProfile();							\
+		if (ba)	{												\
+			RESULT = static_cast<API*>(ba)->NAME(__VA_ARGS__);	\
+			pm.releaseProfile();								\
+			return true;										\
+		}														\
+		return false;											\
+	} while (0)
+
+#define HANDLER_BOILERPLATE_VOID_CALL(API, NAME, ...)			\
+	do { 														\
+		BaseApi* ba = pm.getProfile();							\
+		if (ba)	{												\
+			static_cast<API*>(ba)->NAME(__VA_ARGS__);			\
+			pm.releaseProfile();								\
+			return true;										\
+		}														\
+		return false;											\
+	} while (0)
+
+struct SpecificHandler
 {
 	PM& pm;
-	Handler(PM& pm) : pm(pm) {}
-	void specificMethod() 
+	SpecificHandler(PM& pm) : pm(pm) {}
+
+	bool specificMethod() 
 	{ 
+
 		BaseApi* ba = pm.getProfile();
-		if (ba)
-		{
-			SpecificApi* api = static_cast<SpecificApi*>(ba);
-			return api->specificMethod();	
+		if (ba)	{
+			static_cast<SpecificApi*>(ba)->specificMethod();
+			pm.releaseProfile();
+			return true;
 		}
+		return false;	
+	}
+
+	bool specMethVoidRes(int const a)
+	{
+		HANDLER_BOILERPLATE_VOID_CALL(SpecificApi, specMethVoidRes, a);
+	}
+
+	bool specMethIntRes(double const b, int & res)
+	{
+		HANDLER_BOILERPLATE_CALL(SpecificApi, specMethIntRes, res, b);
 	}
 };
 
 int main()
 {
 	PM pm;
-	Handler h(pm);
-	h.specificMethod();
+	SpecificHandler h(pm);
+	std::cout << h.specificMethod() << std::endl;
+	int res = 0;
+	std::cout << h.specMethIntRes(100.345, res) << " res = " << res << std::endl;
 	pm.killProfile();
+	std::cout << h.specMethVoidRes(100) << std::endl;
 }
 
